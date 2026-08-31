@@ -55,13 +55,11 @@ async def fetch_link(browser, data):
     url = data.get("url")
     logo = data.get("logo", "")
 
-    # রিয়েল ব্রাউজারের মতো ইউজার-এজেন্ট সেট করা যাতে বট হিসেবে ব্লক না করে
     context = await browser.new_context(
         user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     )
     page = await context.new_page()
 
-    # অপ্রয়োজনীয় ইমেজ, ফন্ট এবং স্টাইলশিট ব্লক করে পেজ লোড সুপার ফাস্ট করা
     await page.route("**/*.{png,jpg,jpeg,gif,css,svg,ico,woff,woff2}", lambda route: route.abort())
 
     m3u8_url = None
@@ -71,7 +69,6 @@ async def fetch_link(browser, data):
         nonlocal m3u8_url, referer_url
         req_url = request.url
         if ".m3u8" in req_url or "playlist" in req_url:
-            # ডামি বা লো-কোয়ালিটি থাম্বনেইল এড়িয়ে আসল স্ট্রিম লিংক ধরার ফিল্টার
             if "mono.m3u8" in req_url or "tracks" in req_url or "index" in req_url or "live" in req_url:
                 m3u8_url = req_url
                 headers = request.headers
@@ -82,7 +79,6 @@ async def fetch_link(browser, data):
     try:
         await page.goto(url, timeout=20000)
         
-        # লিংক পাওয়ার জন্য স্মার্ট ওয়েটিং (সর্বোচ্চ ৬ সেকেন্ড)
         for _ in range(6):
             if m3u8_url:
                 break
@@ -119,7 +115,6 @@ async def main():
         results = []
         channel_items = list(channels.values())
         
-        # একসঙ্গে ১০টি করে ট্যাব চালিয়ে গতি বহুগুণ বাড়িয়ে দেওয়া হলো
         batch_size = 10
         for i in range(0, len(channel_items), batch_size):
             batch = channel_items[i:i + batch_size]
@@ -136,7 +131,9 @@ async def main():
     
     for name, logo, stream_link in results:
         if stream_link:
-            playlist_content += f'#EXTINF:-1 tvg-id="" tvg-name="{name}" tvg-logo="{logo}" group-title="DaddyLive",{name}\n'
+            # টাইটেলের সাথে নতুন লেখা >Capture< যুক্ত করা হয়েছে
+            display_name = f"{name} >Capture<"
+            playlist_content += f'#EXTINF:-1 tvg-id="" tvg-name="{display_name}" tvg-logo="{logo}" group-title="DaddyLive",{display_name}\n'
             playlist_content += f"{stream_link}\n"
             success_count += 1
 
