@@ -1,84 +1,69 @@
 import asyncio
+from bs4 import BeautifulSoup
 from playwright.async_api import async_playwright
 
-async def process_single_channel(browser, channel_info):
-    # নতুন ট্যাব ওপেন করা
-    page = await browser.new_page()
+async def get_channels_from_homepage():
+    print("[1/2] হোমপেজ থেকে চ্যানেলের নাম এবং ওয়াচ পেজ লিংক সংগ্রহ করা হচ্ছে...")
     
-    # অতিরিক্ত পপ-আপ বা নতুন ট্যাব ওপেন হওয়া রোধ করা
-    page.on("popup", lambda popup: popup.close())
+    # ড্যাডি লাইভের মূল চ্যানেল লিস্ট পেজ (আপনার প্রয়োজনমতো ইউআরএল পরিবর্তন করতে পারেন)
+    homepage_url = "https://dlstreams.st/24-7-channels" # অথবা মূল হোমপেজ
     
-    captured_data = None
+    channels_list = []
     
-    # নেটওয়ার্ক রিকোয়েস্ট ইন্টারসেপ্ট করে .m3u8 এবং Referer খোঁজা
-    async def handle_request(route):
-        nonlocal captured_data
-        url = route.request.url
-        if ".m3u8" in url:
-            headers = route.request.headers
-            referer = headers.get("referer", "https://dlstreams.st/")
-            captured_data = f"{url}|Referer={referer}"
-        await route.continue_()
-
-    await page.route("**/*", handle_request)
-    
-    try:
-        # ওয়াচ পেজে প্রবেশ
-        await page.goto(channel_info["url"], timeout=30000, wait_until="domcontentloaded")
-        
-        # স্ট্রিম লোড হওয়ার জন্য অল্প সময় অপেক্ষা করা
-        for _ in range(10):
-            if captured_data:
-                break
-            await asyncio.sleep(1)
-            
-    except Exception as e:
-        print(f"Error on {channel_info['title']}: {e}")
-    finally:
-        await page.close()
-        
-    return captured_data, channel_info['title']
-
-async def main():
-    print("[1/3] ওয়াচ পেজ থেকে মাল্টি-ট্যাবের মাধ্যমে .m3u8 লিংক ক্যাপচার করা হচ্ছে...")
-    
-    channels_to_test = [
-        {"title": "CANAL+ FAMILY POLAND", "url": "https://dlstreams.st/stream/watch.php?id=567"},
-        {"title": "CANAL+ SERIALE POLAND", "url": "https://dlstreams.st/stream/watch.php?id=570"}
-    ]
-    
-    results = []
     async with async_playwright() as p:
-        # সংশোধন: এখানে 'await' যুক্ত করা হয়েছে
         browser = await p.chromium.launch(headless=True)
+        page = await browser.new_page()
         
-        tasks = [process_single_channel(browser, ch) for ch in channels_to_test]
-        completed_tasks = await asyncio.gather(*tasks)
+        try:
+            # পেজে প্রবেশ এবং লোড হওয়া পর্যন্ত অপেক্ষা
+            await page.goto(homepage_url, timeout=30000, wait_until="domcontentloaded")
+            await asyncio.sleep(3) # যদি জাভাস্ক্রিপ্ট দিয়ে কার্ডগুলো লোড হয়
+            
+            content = await page.content()
+            soup = BeautifulSoup(content, 'html.parser')
+            
+            # ওয়েবসাইটের স্ট্রাকচার অনুযায়ী চ্যানেল কার্ডগুলো খুঁজে বের করা
         
-        for res in completed_tasks:
-            if res and res[0]:
-                results.append(res) # (stream_data, title) সংরক্ষণ করা হলো
-                
-        await browser.close()
+            # নোট: সাধারণত এই সাইটগুলোতে কার্ডগুলো <a> ট্যাগ বা নির্দিষ্ট ক্লাসের ভেতরে থাকে। 
+            # নিচে একটি জেনেরিক লজিক দেওয়া হলো যা কার্ড বা লিংকগুলো খুঁজে নেবে।
+            
+            cards = soup.find_all('a', href=True)
+            for card in cards:
+                href = card['href']
+                if "watch.php?id=" in href:
+                    # যদি লিংকে পূর্ণাঙ্গ ইউআরএল না থাকে
+                    if not href.startswith("http"):
+                        watch_url = f"https://dlstreams.st/{href}" if not href.startswith("/") else f"https://dlstreams.st{href}"
+                    else:
+                        watch_url = href
+                        
+                    # চ্যানেলের নাম খোঁজার চেষ্টা (কার্ডের ভেতরের টেক্সট থেকে)
+                    title_text = card.get_text(separator=" ", strip=True)
+                    if title_text:
+                        # নাম থেকে আইডি অংশ আলাদা করা যেতে পারে
+                        channels_list.append({"title": title_text, "url": watch_url})
+                        
+        except Exception as e:
+            print(f"Error fetching homepage: {e}")
+        finally:
+            await browser.close()
+            
+    # ডুপ্লিকেট রিমুভ করা
+    unique_channels = []
+    seen_urls = set()
+    for ch in channels_list:
+        if ch['url'] not in seen_urls:
+            seen_urls.add(ch['url'])
+            unique_channels.append(ch)
 
-    print(f"[2/3] মোট {len(results)} টি সচল স্ট্রিম লিংক পাওয়া গেছে।")
+    print(f"[2/2] মোট {len(unique_channels)} টি চ্যানেলের ওয়াচ পেজ পাওয়া গেছে।")
     
-    print("[3/3] playlist.m3u ফাইল তৈরি করা হচ্ছে...")
-    
-    m3u_content = "#EXTM3U\n"
-    for stream_data, title in results:
-        parts = stream_data.split("|Referer=")
-        stream_url = parts[0]
-        referer_url = parts[1] if len(parts) > 1 else "https://dlstreams.st/"
-        
-        # সংশোধন: জেনেরিক "Channel" এর বদলে চ্যানেলের আসল নামটি ডাইনামিকভাবে বসানো হলো
-        m3u_content += f"#EXTINF:-1,{title}\n"
-        m3u_content += f"{stream_url}|Referer={referer_url}\n"
-
-    with open("playlist.m3u", "w", encoding="utf-8") as f:
-        f.write(m3u_content)
-
-    print("[✔] সফলভাবে 'playlist.m3u' আপডেট হয়ে গেছে!")
+    # ফলাফল একটি ফাইলে সেভ করে রাখা যেন পরের ধাপে ব্যবহার করা যায়
+    with open("channels_output.txt", "w", encoding="utf-8") as f:
+        for ch in unique_channels:
+            f.write(f"Title: {ch['title']} | URL: {ch['url']}\n")
+            
+    print("[✔] সফলভাবে 'channels_output.txt' ফাইলে চ্যানেলগুলোর লিস্ট সেভ হয়ে গেছে!")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(get_channels_from_homepage())
