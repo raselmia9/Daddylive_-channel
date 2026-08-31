@@ -1,39 +1,37 @@
-name: Run Scraper
+name: Update Playlists
 
 on:
   schedule:
-    - cron: '0 */6 * * *' # প্রতি ৬ ঘণ্টা পর পর স্বয়ংক্রিয়ভাবে রান হবে
-  workflow_dispatch: # ম্যানুয়ালি রান করার বোতাম দেবে
+    - cron: '0 */6 * * *' # প্রতি ৬ ঘণ্টা পর পর অটো রান হবে (প্রয়োজনমতো পরিবর্তন করতে পারেন)
+  workflow_dispatch: # ম্যানুয়ালি রান করার অপশন
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
-    permissions:
-      contents: write
-
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v3
+      - name: Checkout Repository
+        uses: actions/checkout@v3
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install beautifulsoup4 playwright
-        playwright install chromium
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install beautifulsoup4 playwright
+          playwright install chromium
 
-    - name: Run main script
-      run: python main.py
+      - name: Run main script
+        run: |
+          python main.py
 
-    - name: Commit and push generated playlist
-      run: |
-        git config --global user.name "GitHub Action"
-        git config --global user.email "action@github.com"
-        git add playlist.m3u
-        git commit -m "Auto-update playlist.m3u" || exit 0
-        git push
+      - name: Commit and push generated playlist
+        run: |
+          git config --global user.name "actions-user"
+          git config --global user.email "actions@github.com"
+          git add playlist.m3u "Crichd page Link.json"
+          git commit -m "Auto-update playlist and json files [skip ci]" || echo "No changes to commit"
+          git push
