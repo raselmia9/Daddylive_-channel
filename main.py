@@ -1,81 +1,90 @@
 import asyncio
-from bs4 import BeautifulSoup
 from playwright.async_api import async_playwright
 
-async def main():
-    print("[1/2] হোমপেজ থেকে চ্যানেলের নাম এবং ওয়াচ পেজ লিংক সংগ্রহ করা হচ্ছে...")
-    homepage_url = "https://dlstreams.st/24-7-channels"
-    
-    channels_list = []
-    
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(
-            headless=True,
-            args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
-        )
-        context = await browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        )
-        page = await context.new_page()
-        
-        try:
-            # পেজ লোড করা এবং রেন্ডার হওয়ার জন্য সময় দেওয়া
-            await page.goto(homepage_url, timeout=60000, wait_until="domcontentloaded")
-            await asyncio.sleep(5)
-            
-            content = await page.content()
-            soup = BeautifulSoup(content, 'html.parser')
-            
-            # ওয়েবসাইটের কার্ড বা লিংকগুলো খোঁজা যেগুলোতে watch.php আছে
-            for a_tag in soup.find_all('a', href=True):
-                href = a_tag['href']
-                if "watch.php?id=" in href:
-                    if href.startswith("http"):
-                        watch_url = href
-                    elif href.startswith("/"):
-                        watch_url = f"https://dlstreams.st{href}"
-                    else:
-                        watch_url = f"https://dlstreams.st/{href}"
-                        
-                    # চ্যানেলের নাম সংগ্রহ ও পরিষ্কার করা
-                    title_text = a_tag.get_text(separator=" ", strip=True)
-                    if "ID:" in title_text:
-                        title_text = title_text.split("ID:")[0].strip()
-                    
-                    if not title_text:
-                        title_text = "Live Channel"
-                        
-                    channels_list.append({"title": title_text, "url": watch_url})
-                            
-        except Exception as e:
-            print(f"Error fetching homepage: {e}")
-        finally:
-            await browser.close()
-            
-    # ডুপ্লিকেট রিমুভ করা
-    unique_channels = []
-    seen_urls = set()
-    for ch in channels_list:
-        if ch['url'] not in seen_urls:
-            seen_urls.add(ch['url'])
-            unique_channels.append(ch)
+# আপনার ফাইলে সেভ করা ওয়াচ পেজগুলো পড়ার জন্য বা সরাসরি লিস্ট থেকে কাজ করার জন্য 
+# এখানে আমরা ধরে নিচ্ছি আগের কোড থেকে ওয়াচ পেজগুলো নিয়ে কাজ করব।
 
-    print(f"[2/2] মোট {len(unique_channels)} টি চ্যানেল পাওয়া গেছে। playlist.m3u তৈরি হচ্ছে...")
+async def process_single_channel(browser, channel_info):
+    # নতুন ট্যাব ওপেন করা
+    page = await browser.new_page()
     
-    # প্লেলিস্টে ওয়াচ পেজ লিংকগুলো বসানো
+    # অতিরিক্ত পপ-আপ বা নতুন ট্যাব ওপেন হওয়া রোধ করা
+    page.on("popup", lambda popup: popup.close())
+    
+    captured_data = None
+    
+    # নেটওয়ার্ক রিকোয়েস্ট ইন্টারসেপ্ট করে .m3u8 এবং Referer খোঁজা
+    async def handle_request(route):
+        nonlocal captured_data
+        url = route.request.url
+        if ".m3u8" in url:
+            headers = route.request.headers
+            referer = headers.get("referer", "https://dlstreams.st/")
+            captured_data = f"{url}|Referer={referer}"
+        await route.continue_()
+
+    await page.route("**/*", handle_request)
+    
+    try:
+        # ওয়াচ পেজে প্রবেশ (পপ-আপ বিজ্ঞাপন আসলেও ফোকাস ঠিক রাখতে টাইমআউট হ্যান্ডেল করা)
+        await page.goto(channel_info["url"], timeout=30000, wait_until="domcontentloaded")
+        
+        # স্ট্রিম লোড হওয়ার জন্য অল্প সময় অপেক্ষা করা
+        for _ in range(10):
+            if captured_data:
+                break
+            await asyncio.sleep(1)
+            
+    except Exception as e:
+        print(f"Error on {channel_info['title']}: {e}")
+    finally:
+        await page.close()
+        
+    return captured_data
+
+async def main():
+    print("[1/3] ওয়াচ পেজ থেকে মাল্টি-ট্যাবের মাধ্যমে .m3u8 লিংক ক্যাপচার করা হচ্ছে...")
+    
+    # উদাহরণস্বরূপ কিছু ওয়াচ পেজ (আপনার মেইন স্ক্রিপ্ট থেকে এগুলো রিড করতে পারেন)
+    channels_to_test = [
+        {"title": "CANAL+ FAMILY POLAND", "url": "https://dlstreams.st/stream/watch.php?id=567"},
+        {"title": "CANAL+ SERIALE POLAND", "url": "https://dlstreams.st/stream/watch.php?id=570"}
+    ]
+    
+    results = []
+    async with async_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        
+        # একসাথে একাধিক ট্যাব (Concurrency) চালিয়ে কাজ করার জন্য টাস্ক তৈরি
+        tasks = [process_single_channel(browser, ch) for ch in channels_to_test]
+        completed_tasks = await asyncio.gather(*tasks)
+        
+        for res in completed_tasks:
+            if res:
+                results.append(res)
+                
+        await browser.close()
+
+    print(f"[2/3] মোট {len(results)} টি সচল স্ট্রিম লিংক পাওয়া গেছে।")
+    
+    print("[3/3] playlist.m3u ফাইল তৈরি করা হচ্ছে...")
+    
+    # আপনার কাঙ্ক্ষিত ফরম্যাটে ফাইল তৈরি (কোনো অতিরিক্ত এক্সট্রা ট্যাগ ছাড়া)
     m3u_content = "#EXTM3U\n"
-    if unique_channels:
-        for ch in unique_channels:
-            m3u_content += f"#EXTINF:-1,{ch['title']}\n"
-            m3u_content += f"{ch['url']}\n"
-    else:
-        m3u_content += "#EXTINF:-1,Error: No watch page links captured\n"
-        m3u_content += "https://dlstreams.st/\n"
+    for item in results:
+        # item দেখতে এমন হবে: link|Referer=ref_link
+        parts = item.split("|Referer=")
+        stream_url = parts[0]
+        referer_url = parts[1] if len(parts) > 1 else "https://dlstreams.st/"
+        
+        # এখানে আপনার কাঙ্ক্ষিত ফরম্যাট দেওয়া হলো
+        m3u_content += f"#EXTINF:-1,Channel\n"
+        m3u_content += f"{stream_url}|Referer={referer_url}\n"
 
     with open("playlist.m3u", "w", encoding="utf-8") as f:
         f.write(m3u_content)
 
-    print("[✔] সফলভাবে ওয়াচ পেজ লিংক দিয়ে playlist.m3u আপডেট করা হয়েছে!")
+    print("[✔] সফলভাবে 'playlist.m3u' আপডেট হয়ে গেছে!")
 
 if __name__ == "__main__":
     asyncio.run(main())
