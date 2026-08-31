@@ -1,22 +1,30 @@
-import asyncio
+import json
 import sys
 from bs4 import BeautifulSoup
-from playwright.async_api import async_playwright
+from playwright.sync_api import sync_playwright
 
+# টার্গেট ওয়েবসাইট লিংক
 URL = "https://dlstreams.st/24-7-channels.php"
 
-# ধাপ ১: DaddyLive মূল পেজ থেকে ওয়াচ পেজের লিংক এবং নাম সঠিকভাবে সংগ্রহ করা
-async def fetch_watch_links(page):
-    print("[1/3] DaddyLive পেজ থেকে চ্যানেল এবং ওয়াচ পেজের লিংক সংগ্রহ করা হচ্ছে...")
-    channels = []
+def generate_json_data():
+    print("[1/2] DaddyLive পেজ থেকে চ্যানেল এবং ওয়াচ পেজের লিংক সংগ্রহ করা হচ্ছে...")
+    
+    channels_dict = {}
     try:
-        await page.goto(URL, timeout=60000)
-        await page.wait_for_timeout(4000)
-        
-        content = await page.content()
-        soup = BeautifulSoup(content, 'html.parser')
-        
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page()
+            
+            # পেজে যাওয়া এবং লোড হওয়ার জন্য অপেক্ষা করা
+            page.goto(URL, timeout=60000)
+            page.wait_for_timeout(4000)
+            
+            soup = BeautifulSoup(page.content(), 'html.parser')
+            browser.close()
+
+        # চ্যানেল কার্ড বা লিংক ফিল্টার করা
         cards = soup.find_all('a')
+        idx = 1
         for card in cards:
             href = card.get('href')
             text = card.get_text(separator="|", strip=True)
@@ -25,104 +33,33 @@ async def fetch_watch_links(page):
                 if href.startswith('/'):
                     href = "https://dlstreams.st" + href
                 
-                # আপনার পরীক্ষিত সঠিক ফিল্টার শর্ত
+                # ওয়াচ পেজ বা স্ট্রিম লিংক ফিল্টার করা
                 if "stream" in href or "watch" in href or "id=" in href:
                     parts = text.split('|')
                     channel_name = parts[0] if len(parts) > 0 else "Unknown Channel"
-                    channels.append({"name": channel_name, "url": href})
+                    
+                    # আপনার দেওয়া ডেমো ফরম্যাট অনুযায়ী সংখ্যা কি ("1", "2"...) ব্যবহার করা
+                    channels_dict[str(idx)] = {
+                        "name": channel_name,
+                        "url": href,
+                        "logo": ""  # প্রয়োজনে লোগো লিংক দেওয়া যাবে
+                    }
+                    idx += 1
 
     except Exception as e:
-        print(f"Error fetching main page: {e}")
+        print(f"Error fetching data: {e}")
+        sys.exit(1)
 
-    # ডুপ্লিকেট বাদ দেওয়া
-    unique_channels = [dict(t) for t in {tuple(d.items()) for d in channels}]
-    print(f"[✔] মোট {len(unique_channels)} টি ওয়াচ পেজ সফলভাবে পাওয়া গেছে।")
-    return unique_channels
+    print(f"[✔] মোট {len(channels_dict)} টি চ্যানেলের ডেটা পাওয়া গেছে।")
 
-# ধাপ ২: ওয়াচ পেজ থেকে আপনার পরীক্ষিত লজিকে .m3u8 এবং Referer ক্যাপচার করা
-async def fetch_m3u8_stream(browser, channel_info):
-    name = channel_info["name"]
-    url = channel_info["url"]
-
-    context = await browser.new_context()
-    page = await context.new_page()
+    print("[2/2] JSON ফাইলে ডেটা সেভ করা হচ্ছে...")
     
-    # পেজের গতি বাড়ানোর জন্য ইমেজ, অ্যাডস ও সিএসএস ব্লক করা
-    await page.route("**/*.{png,jpg,jpeg,gif,css,svg}", lambda route: route.abort())
-    page.on("popup", lambda popup: popup.close())
+    # আপনার দেওয়া দ্বিতীয় স্ক্রিপ্ট যে নামে JSON ফাইল খুঁজে থাকে: "Crichd page Link.json"
+    json_filename = "Crichd page Link.json"
+    with open(json_filename, "w", encoding="utf-8") as f:
+        json.dump(channels_dict, f, ensure_ascii=False, indent=4)
 
-    m3u8_url = None
-    referer_url = "https://dlstreams.st/"
-
-    def handle_request(request):
-        nonlocal m3u8_url, referer_url
-        if ".m3u8" in request.url:
-            m3u8_url = request.url
-            headers = request.headers
-            referer_url = headers.get("referer", "https://dlstreams.st/")
-
-    page.on("request", handle_request)
-
-    try:
-        await page.goto(url, timeout=30000)
-        
-        # লিংক পাওয়ার জন্য সর্বোচ্চ ১০ সেকেন্ড অপেক্ষা করা
-        for _ in range(10):
-            if m3u8_url:
-                break
-            await asyncio.sleep(1)
-
-    except Exception as e:
-        print(f"Error for {name}: {e}")
-    finally:
-        await context.close()
-
-    if m3u8_url:
-        stream_link = f"{m3u8_url}|Referer={referer_url}"
-        print(f"Success: {name}")
-        return name, stream_link
-    else:
-        print(f"Failed: {name} (Link not found)")
-        return name, None
-
-async def main():
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        main_page = await browser.new_page()
-        
-        # ১. সঠিক উপায়ে ওয়াচ পেজের লিংকগুলো তুলে নেওয়া
-        channels = await fetch_watch_links(main_page)
-        await main_page.close()
-        
-        if not channels:
-            print("কোনো চ্যানেল বা ওয়াচ পেজের লিংক পাওয়া যায়নি!")
-            await browser.close()
-            return
-
-        print("[2/3] মাল্টি-ট্যাব ব্যবহার করে স্ট্রিমিং পেজ থেকে .m3u8 লিংক ক্যাপচার করা হচ্ছে...")
-        
-        # ২. অ্যাসিনক্রোনাস মাল্টি-ট্যাব দিয়ে সব চ্যানেল প্রসেস করা
-        tasks = [fetch_m3u8_stream(browser, ch) for ch in channels]
-        results = await asyncio.gather(*tasks)
-        
-        await browser.close()
-
-    print("[3/3] চূড়ান্ত playlist.m3u ফাইল তৈরি করা হচ্ছে...")
-    
-    playlist_content = "#EXTM3U\n"
-    success_count = 0
-
-    for name, stream_link in results:
-        if stream_link:
-            playlist_content += f'#EXTINF:-1 tvg-chno="" tvg-name="{name}" group-title="DaddyLive",{name}\n'
-            playlist_content += f"{stream_link}\n"
-            success_count += 1
-
-    file_name = "playlist.m3u"
-    with open(file_name, "w", encoding="utf-8") as f:
-        f.write(playlist_content)
-
-    print(f"[✔] কাজ শেষ! মোট {success_count} টি সচল স্ট্রিম নিয়ে '{file_name}' সফলভাবে তৈরি হয়েছে।")
+    print(f"[✔] সফলভাবে '{json_filename}' ফাইলটি আপনার কাঙ্ক্ষিত ডেমো ফরম্যাটে তৈরি করা হয়েছে!")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    generate_json_data()
