@@ -2,25 +2,21 @@ import asyncio
 import sys
 from bs4 import BeautifulSoup
 from playwright.async_api import async_playwright
-# sync_playwright এর পরিবর্তে আমরা প্লেলাইটের অ্যাসিনক্রোনাস ভার্সন দিয়েই প্রথম কাজ করব
 
 URL = "https://dlstreams.st/24-7-channels.php"
 
-# ধাপ ১: অ্যাসিনক্রোনাসভাবে মূল পেজ থেকে চ্যানেল এবং ওয়াচ পেজের লিংকগুলো সংগ্রহ করা
-async def fetch_watch_links(browser):
+# ধাপ ১: DaddyLive মূল পেজ থেকে ওয়াচ পেজের লিংক এবং নাম সঠিকভাবে সংগ্রহ করা
+async def fetch_watch_links(page):
     print("[1/3] DaddyLive পেজ থেকে চ্যানেল এবং ওয়াচ পেজের লিংক সংগ্রহ করা হচ্ছে...")
     channels = []
     try:
-        page = await browser.new_page()
         await page.goto(URL, timeout=60000)
         await page.wait_for_timeout(4000)
         
         content = await page.content()
-        await page.close()
-        
         soup = BeautifulSoup(content, 'html.parser')
-        cards = soup.find_all('a')
         
+        cards = soup.find_all('a')
         for card in cards:
             href = card.get('href')
             text = card.get_text(separator="|", strip=True)
@@ -29,6 +25,7 @@ async def fetch_watch_links(browser):
                 if href.startswith('/'):
                     href = "https://dlstreams.st" + href
                 
+                # আপনার পরীক্ষিত সঠিক ফিল্টার শর্ত
                 if "stream" in href or "watch" in href or "id=" in href:
                     parts = text.split('|')
                     channel_name = parts[0] if len(parts) > 0 else "Unknown Channel"
@@ -36,19 +33,21 @@ async def fetch_watch_links(browser):
 
     except Exception as e:
         print(f"Error fetching main page: {e}")
-        return []
 
+    # ডুপ্লিকেট বাদ দেওয়া
     unique_channels = [dict(t) for t in {tuple(d.items()) for d in channels}]
-    print(f"[✔] মোট {len(unique_channels)} টি ওয়াচ পেজ পাওয়া গেছে।")
+    print(f"[✔] মোট {len(unique_channels)} টি ওয়াচ পেজ সফলভাবে পাওয়া গেছে।")
     return unique_channels
 
-# ধাপ ২: নির্দিষ্ট ওয়াচ পেজ থেকে .m3u8 লিংক ও রেফারার বের করা
+# ধাপ ২: ওয়াচ পেজ থেকে আপনার পরীক্ষিত লজিকে .m3u8 এবং Referer ক্যাপচার করা
 async def fetch_m3u8_stream(browser, channel_info):
     name = channel_info["name"]
     url = channel_info["url"]
 
-    page = await browser.new_page()
+    context = await browser.new_context()
+    page = await context.new_page()
     
+    # পেজের গতি বাড়ানোর জন্য ইমেজ, অ্যাডস ও সিএসএস ব্লক করা
     await page.route("**/*.{png,jpg,jpeg,gif,css,svg}", lambda route: route.abort())
     page.on("popup", lambda popup: popup.close())
 
@@ -65,8 +64,9 @@ async def fetch_m3u8_stream(browser, channel_info):
     page.on("request", handle_request)
 
     try:
-        await page.goto(url, timeout=30000, wait_until="domcontentloaded")
+        await page.goto(url, timeout=30000)
         
+        # লিংক পাওয়ার জন্য সর্বোচ্চ ১০ সেকেন্ড অপেক্ষা করা
         for _ in range(10):
             if m3u8_url:
                 break
@@ -75,7 +75,7 @@ async def fetch_m3u8_stream(browser, channel_info):
     except Exception as e:
         print(f"Error for {name}: {e}")
     finally:
-        await page.close()
+        await context.close()
 
     if m3u8_url:
         stream_link = f"{m3u8_url}|Referer={referer_url}"
@@ -88,17 +88,20 @@ async def fetch_m3u8_stream(browser, channel_info):
 async def main():
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
+        main_page = await browser.new_page()
         
-        # ১. মূল পেজ থেকে লিংকগুলো তুলে নেওয়া
-        channels = await fetch_watch_links(browser)
+        # ১. সঠিক উপায়ে ওয়াচ পেজের লিংকগুলো তুলে নেওয়া
+        channels = await fetch_watch_links(main_page)
+        await main_page.close()
+        
         if not channels:
-            print("কোনো চ্যানেল পাওয়া যায়নি!")
+            print("কোনো চ্যানেল বা ওয়াচ পেজের লিংক পাওয়া যায়নি!")
             await browser.close()
             return
 
         print("[2/3] মাল্টি-ট্যাব ব্যবহার করে স্ট্রিমিং পেজ থেকে .m3u8 লিংক ক্যাপচার করা হচ্ছে...")
         
-        # ২. মাল্টি-ট্যাবের মাধ্যমে সব চ্যানেল প্রসেস করা
+        # ২. অ্যাসিনক্রোনাস মাল্টি-ট্যাব দিয়ে সব চ্যানেল প্রসেস করা
         tasks = [fetch_m3u8_stream(browser, ch) for ch in channels]
         results = await asyncio.gather(*tasks)
         
