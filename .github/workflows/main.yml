@@ -1,4 +1,4 @@
-Name: Auto Update M3U8 Playlist
+name: Auto Update M3U8 Playlist
 
 on:
   schedule:
