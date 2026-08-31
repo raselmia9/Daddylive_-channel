@@ -2,8 +2,8 @@ name: Run Scraper
 
 on:
   schedule:
-    - cron: '0 */6 * * *'
-  workflow_dispatch:
+    - cron: '0 */6 * * *' # প্রতি ৬ ঘণ্টা পর পর স্বয়ংক্রিয়ভাবে রান হবে
+  workflow_dispatch: # ম্যানুয়ালি রান করার বোতাম দেবে
 
 jobs:
   build:
