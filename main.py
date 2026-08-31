@@ -1,15 +1,15 @@
-import json
 import sys
+import json
 from bs4 import BeautifulSoup
 from playwright.sync_api import sync_playwright
 
 # টার্গেট ওয়েবসাইট লিংক
 URL = "https://dlstreams.st/24-7-channels.php"
 
-def generate_json_data():
-    print("[1/2] DaddyLive পেজ থেকে চ্যানেল এবং ওয়াচ পেজের লিংক সংগ্রহ করা হচ্ছে...")
+def generate_json_playlist():
+    print("[1/2] DaddyLive পেজ থেকে চ্যানেল এবং লিংক সংগ্রহ করা হচ্ছে...")
     
-    channels_dict = {}
+    channels = []
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
@@ -24,7 +24,6 @@ def generate_json_data():
 
         # চ্যানেল কার্ড বা লিংক ফিল্টার করা
         cards = soup.find_all('a')
-        idx = 1
         for card in cards:
             href = card.get('href')
             text = card.get_text(separator="|", strip=True)
@@ -37,29 +36,33 @@ def generate_json_data():
                 if "stream" in href or "watch" in href or "id=" in href:
                     parts = text.split('|')
                     channel_name = parts[0] if len(parts) > 0 else "Unknown Channel"
-                    
-                    # আপনার দেওয়া ডেমো ফরম্যাট অনুযায়ী সংখ্যা কি ("1", "2"...) ব্যবহার করা
-                    channels_dict[str(idx)] = {
-                        "name": channel_name,
-                        "url": href,
-                        "logo": ""  # প্রয়োজনে লোগো লিংক দেওয়া যাবে
-                    }
-                    idx += 1
+                    channels.append({"name": channel_name, "url": href})
 
     except Exception as e:
         print(f"Error fetching data: {e}")
         sys.exit(1)
 
-    print(f"[✔] মোট {len(channels_dict)} টি চ্যানেলের ডেটা পাওয়া গেছে।")
+    # ডুপ্লিকেট বাদ দেওয়া
+    unique_channels = [dict(t) for t in {tuple(d.items()) for d in channels}]
+    print(f"[✔] মোট {len(unique_channels)} টি চ্যানেল পাওয়া গেছে।")
 
-    print("[2/2] JSON ফাইলে ডেটা সেভ করা হচ্ছে...")
+    print("[2/2] JSON ফরম্যাটে ফাইল তৈরি করা হচ্ছে...")
     
-    # আপনার দেওয়া দ্বিতীয় স্ক্রিপ্ট যে নামে JSON ফাইল খুঁজে থাকে: "Crichd page Link.json"
+    # আপনার দেওয়া ডেমো ফরম্যাট অনুযায়ী ডিকশনারি সাজানো ("1", "2", "3"...)
+    channels_dict = {}
+    for idx, item in enumerate(unique_channels, start=1):
+        channels_dict[str(idx)] = {
+            "name": item["name"],
+            "url": item["url"],
+            "logo": ""  # লোগো না থাকলে ফাঁকা থাকবে
+        }
+
+    # আপনার দ্বিতীয় স্ক্রিপ্টের কাঙ্ক্ষিত ফাইল নামে সেভ করা
     json_filename = "Crichd page Link.json"
     with open(json_filename, "w", encoding="utf-8") as f:
         json.dump(channels_dict, f, ensure_ascii=False, indent=4)
 
-    print(f"[✔] সফলভাবে '{json_filename}' ফাইলটি আপনার কাঙ্ক্ষিত ডেমো ফরম্যাটে তৈরি করা হয়েছে!")
+    print(f"[✔] সফলভাবে '{json_filename}' ফাইল তৈরি করা হয়েছে!")
 
 if __name__ == "__main__":
-    generate_json_data()
+    generate_json_playlist()
