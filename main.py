@@ -2,26 +2,25 @@ import asyncio
 import sys
 from bs4 import BeautifulSoup
 from playwright.async_api import async_playwright
+# sync_playwright এর পরিবর্তে আমরা প্লেলাইটের অ্যাসিনক্রোনাস ভার্সন দিয়েই প্রথম কাজ করব
 
-# টার্গেট ওয়েবসাইট লিংক
 URL = "https://dlstreams.st/24-7-channels.php"
 
-# ধাপ ১: ওয়েবসাইট থেকে চ্যানেল এবং ওয়াচ পেজের লিংকগুলো সংগ্রহ করা (Synchronous)
-def fetch_watch_links():
+# ধাপ ১: অ্যাসিনক্রোনাসভাবে মূল পেজ থেকে চ্যানেল এবং ওয়াচ পেজের লিংকগুলো সংগ্রহ করা
+async def fetch_watch_links(browser):
     print("[1/3] DaddyLive পেজ থেকে চ্যানেল এবং ওয়াচ পেজের লিংক সংগ্রহ করা হচ্ছে...")
     channels = []
     try:
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            page = browser.new_page()
-            
-            page.goto(URL, timeout=60000)
-            page.wait_for_timeout(4000)
-            
-            soup = BeautifulSoup(page.content(), 'html.parser')
-            browser.close()
-
+        page = await browser.new_page()
+        await page.goto(URL, timeout=60000)
+        await page.wait_for_timeout(4000)
+        
+        content = await page.content()
+        await page.close()
+        
+        soup = BeautifulSoup(content, 'html.parser')
         cards = soup.find_all('a')
+        
         for card in cards:
             href = card.get('href')
             text = card.get_text(separator="|", strip=True)
@@ -37,21 +36,19 @@ def fetch_watch_links():
 
     except Exception as e:
         print(f"Error fetching main page: {e}")
-        sys.exit(1)
+        return []
 
-    # ডুপ্লিকেট বাদ দেওয়া
     unique_channels = [dict(t) for t in {tuple(d.items()) for d in channels}]
     print(f"[✔] মোট {len(unique_channels)} টি ওয়াচ পেজ পাওয়া গেছে।")
     return unique_channels
 
-# ধাপ ২: একটি নির্দিষ্ট ওয়াচ পেজ থেকে অ্যাসিনক্রোনাসভাবে .m3u8 লিংক ও রেফারার বের করা
+# ধাপ ২: নির্দিষ্ট ওয়াচ পেজ থেকে .m3u8 লিংক ও রেফারার বের করা
 async def fetch_m3u8_stream(browser, channel_info):
     name = channel_info["name"]
     url = channel_info["url"]
 
     page = await browser.new_page()
     
-    # পেজের গতি বাড়ানোর এবং অ্যাডস ব্লক করার জন্য
     await page.route("**/*.{png,jpg,jpeg,gif,css,svg}", lambda route: route.abort())
     page.on("popup", lambda popup: popup.close())
 
@@ -70,7 +67,6 @@ async def fetch_m3u8_stream(browser, channel_info):
     try:
         await page.goto(url, timeout=30000, wait_until="domcontentloaded")
         
-        # লিংক পাওয়ার জন্য সর্বোচ্চ ১০ সেকেন্ড অপেক্ষা করা
         for _ in range(10):
             if m3u8_url:
                 break
@@ -89,20 +85,20 @@ async def fetch_m3u8_stream(browser, channel_info):
         print(f"Failed: {name} (Link not found)")
         return name, None
 
-# মূল অ্যাসিনক্রোনাস ফাংশন যা সব কাজ কন্ট্রোল করবে
 async def main():
-    # প্রথমে সিঙ্ক মোডে ওয়াচ পেজের লিংকগুলো তুলে নেওয়া
-    channels = fetch_watch_links()
-    if not channels:
-        print("কোনো চ্যানেল পাওয়া যায়নি!")
-        return
-
-    print("[2/3] মাল্টি-ট্যাব ব্যবহার করে স্ট্রিমিং পেজ থেকে .m3u8 লিংক ক্যাপচার করা হচ্ছে...")
-    
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         
-        # একসাথে সব চ্যানেলের জন্য টাস্ক তৈরি করা (মাল্টি-ট্যাব)
+        # ১. মূল পেজ থেকে লিংকগুলো তুলে নেওয়া
+        channels = await fetch_watch_links(browser)
+        if not channels:
+            print("কোনো চ্যানেল পাওয়া যায়নি!")
+            await browser.close()
+            return
+
+        print("[2/3] মাল্টি-ট্যাব ব্যবহার করে স্ট্রিমিং পেজ থেকে .m3u8 লিংক ক্যাপচার করা হচ্ছে...")
+        
+        # ২. মাল্টি-ট্যাবের মাধ্যমে সব চ্যানেল প্রসেস করা
         tasks = [fetch_m3u8_stream(browser, ch) for ch in channels]
         results = await asyncio.gather(*tasks)
         
@@ -110,7 +106,6 @@ async def main():
 
     print("[3/3] চূড়ান্ত playlist.m3u ফাইল তৈরি করা হচ্ছে...")
     
-    # চূড়ান্ত M3U প্লেলিস্ট কন্টেন্ট তৈরি
     playlist_content = "#EXTM3U\n"
     success_count = 0
 
@@ -120,7 +115,6 @@ async def main():
             playlist_content += f"{stream_link}\n"
             success_count += 1
 
-    # playlist.m3u ফাইলে সেভ করা
     file_name = "playlist.m3u"
     with open(file_name, "w", encoding="utf-8") as f:
         f.write(playlist_content)
