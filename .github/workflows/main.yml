@@ -1,37 +1,40 @@
-name: Update Playlists
+Name: Auto Update M3U8 Playlist
 
 on:
   schedule:
-    - cron: '0 */6 * * *' # প্রতি ৬ ঘণ্টা পর পর অটো রান হবে (প্রয়োজনমতো পরিবর্তন করতে পারেন)
-  workflow_dispatch: # ম্যানুয়ালি রান করার অপশন
+    - cron: '*/10 * * * *'  # প্রতি ১০ মিনিট পরপর রান হবে
+  workflow_dispatch:        # ম্যানুয়ালি রান করার অপশন
+
+permissions:
+  contents: write  # গিটহাবে ফাইল কমিট ও পুশ করার অনুমতি দেওয়ার জন্য
 
 jobs:
-  build:
+  update-link:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
-      - name: Install Dependencies
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install beautifulsoup4 playwright
-          playwright install chromium
+          pip install -r requirements.txt
 
-      - name: Run main script
+      - name: Install Playwright Browsers and Dependencies
         run: |
-          python main.py
+          playwright install --with-deps chromium
 
-      - name: Commit and push generated playlist
+      - name: Run script to generate M3U playlist
+        run: python main.py
+
+      - name: Commit and push if playlist changed
         run: |
-          git config --global user.name "actions-user"
-          git config --global user.email "actions@github.com"
+          git config --global user.name "GitHub Action Bot"
+          git config --global user.email "action@github.com"
           git add playlist.m3u "Crichd page Link.json"
-          git commit -m "Auto-update playlist and json files [skip ci]" || echo "No changes to commit"
-          git push
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-update playlist and json files [skip ci]" && git push)
