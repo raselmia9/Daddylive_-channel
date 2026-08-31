@@ -1,5 +1,3 @@
 #EXTM3U
-
-# --- DEBUG ERRORS ---
-# ERROR: Timeout: No .m3u8 request intercepted for CANAL+ FAMILY POLAND
-# ERROR: Timeout: No .m3u8 request intercepted for CANAL+ SERIALE POLAND
+#EXTINF:-1,Error: No watch page links captured
+https://dlstreams.st/
