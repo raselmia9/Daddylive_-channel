@@ -5,9 +5,7 @@ from playwright.async_api import async_playwright
 async def get_channels_from_homepage():
     print("[1/2] হোমপেজ থেকে চ্যানেলের নাম এবং ওয়াচ পেজ লিংক সংগ্রহ করা হচ্ছে...")
     
-    # ড্যাডি লাইভের মূল চ্যানেল লিস্ট পেজ (আপনার প্রয়োজনমতো ইউআরএল পরিবর্তন করতে পারেন)
-    homepage_url = "https://dlstreams.st/24-7-channels" # অথবা মূল হোমপেজ
-    
+    homepage_url = "https://dlstreams.st/24-7-channels"
     channels_list = []
     
     async with async_playwright() as p:
@@ -15,33 +13,35 @@ async def get_channels_from_homepage():
         page = await browser.new_page()
         
         try:
-            # পেজে প্রবেশ এবং লোড হওয়া পর্যন্ত অপেক্ষা
-            await page.goto(homepage_url, timeout=30000, wait_until="domcontentloaded")
-            await asyncio.sleep(3) # যদি জাভাস্ক্রিপ্ট দিয়ে কার্ডগুলো লোড হয়
+            # পেজে প্রবেশ এবং সম্পূর্ণ লোড হওয়ার জন্য অপেক্ষা
+            await page.goto(homepage_url, timeout=60000, wait_until="networkidle")
+            
+            # পেজটি পুরোপুরি রেন্ডার হওয়ার জন্য একটু সময় দেওয়া
+            await asyncio.sleep(5)
             
             content = await page.content()
             soup = BeautifulSoup(content, 'html.parser')
             
-            # ওয়েবসাইটের স্ট্রাকচার অনুযায়ী চ্যানেল কার্ডগুলো খুঁজে বের করা
-        
-            # নোট: সাধারণত এই সাইটগুলোতে কার্ডগুলো <a> ট্যাগ বা নির্দিষ্ট ক্লাসের ভেতরে থাকে। 
-            # নিচে একটি জেনেরিক লজিক দেওয়া হলো যা কার্ড বা লিংকগুলো খুঁজে নেবে।
-            
-            cards = soup.find_all('a', href=True)
-            for card in cards:
-                href = card['href']
+            # ওয়েবসাইটের সব <a> ট্যাগ চেক করা যেগুলোতে watch.php আছে কি না
+            for a_tag in soup.find_all('a', href=True):
+                href = a_tag['href']
                 if "watch.php?id=" in href:
-                    # যদি লিংকে পূর্ণাঙ্গ ইউআরএল না থাকে
-                    if not href.startswith("http"):
-                        watch_url = f"https://dlstreams.st/{href}" if not href.startswith("/") else f"https://dlstreams.st{href}"
-                    else:
+                    # পূর্ণাঙ্গ ইউআরএল তৈরি
+                    if href.startswith("http"):
                         watch_url = href
+                    elif href.startswith("/"):
+                        watch_url = f"https://dlstreams.st{href}"
+                    else:
+                        watch_url = f"https://dlstreams.st/{href}"
                         
-                    # চ্যানেলের নাম খোঁজার চেষ্টা (কার্ডের ভেতরের টেক্সট থেকে)
-                    title_text = card.get_text(separator=" ", strip=True)
-                    if title_text:
-                        # নাম থেকে আইডি অংশ আলাদা করা যেতে পারে
-                        channels_list.append({"title": title_text, "url": watch_url})
+                    # চ্যানেলের নাম সংগ্রহ (ট্যাগ বা তার ভেতরের টেক্সট থেকে)
+                    title_text = a_tag.get_text(separator=" ", strip=True)
+                    
+                    # যদি টেক্সট অনেক বড় বা ফাঁকা হয়, তবে ইউআরএল থেকে আইডি বের করে ফলব্যাক নাম দেওয়া যেতে পারে
+                    if not title_text:
+                        title_text = "Unknown Channel"
+                        
+                    channels_list.append({"title": title_text, "url": watch_url})
                         
         except Exception as e:
             print(f"Error fetching homepage: {e}")
@@ -58,12 +58,23 @@ async def get_channels_from_homepage():
 
     print(f"[2/2] মোট {len(unique_channels)} টি চ্যানেলের ওয়াচ পেজ পাওয়া গেছে।")
     
-    # ফলাফল একটি ফাইলে সেভ করে রাখা যেন পরের ধাপে ব্যবহার করা যায়
-    with open("channels_output.txt", "w", encoding="utf-8") as f:
-        for ch in unique_channels:
-            f.write(f"Title: {ch['title']} | URL: {ch['url']}\n")
+    # প্লেলিস্ট ফরম্যাটে বা টেক্সট আকারে সেভ করা
+    # আপাতত চেক করার জন্য আমরা সরাসরি m3u ফরম্যাটেই সেভ করতে পারি বা চ্যানেলের লিস্ট রাখতে পারি।
+    m3u_content = "#EXTM3U\n"
+    for ch in unique_channels:
+        # যেহেতু এটি প্রথম ধাপ, তাই আপাতত ওয়াচ পেজ লিংকটিই দিচ্ছি (পরের ধাপে এখানে m3u8 লিংক বসবে)
+        # চ্যানেলের নাম থেকে অপ্রয়োজনীয় লাইন বা আইডি টেক্সট পরিষ্কার করে নেওয়া ভালো
+        clean_title = ch['title'].split("ID:")[0].strip()
+        if not clean_title:
+            clean_title = "Channel"
             
-    print("[✔] সফলভাবে 'channels_output.txt' ফাইলে চ্যানেলগুলোর লিস্ট সেভ হয়ে গেছে!")
+        m3u_content += f"#EXTINF:-1,{clean_title}\n"
+        m3u_content += f"{ch['url']}\n"
+
+    with open("playlist.m3u", "w", encoding="utf-8") as f:
+        f.write(m3u_content)
+
+    print("[✔] সফলভাবে 'playlist.m3u' ফাইলে চ্যানেলগুলো আপডেট হয়ে গেছে!")
 
 if __name__ == "__main__":
     asyncio.run(get_channels_from_homepage())
