@@ -7,12 +7,13 @@ from playwright.async_api import async_playwright
 URL = "https://dlstreams.st/24-7-channels.php"
 JSON_FILENAME = "Crichd page Link.json"
 
+# ধাপ ১: DaddyLive পেজ থেকে চ্যানেল এবং ওয়াচ পেজের লিংক সংগ্রহ করা
 async def generate_json_file(page):
     print("[1/3] DaddyLive পেজ থেকে চ্যানেল এবং ওয়াচ পেজের লিংক সংগ্রহ করা হচ্ছে...")
     channels_dict = {}
     try:
         await page.goto(URL, timeout=60000)
-        await page.wait_for_timeout(4000)
+        await page.wait_for_timeout(3000)
         
         content = await page.content()
         soup = BeautifulSoup(content, 'html.parser')
@@ -48,34 +49,45 @@ async def generate_json_file(page):
         
     return channels_dict
 
+# ধাপ ২: ফাস্ট ও অপ্টিমাইজড পদ্ধতিতে .m3u8 লিংক ক্যাপচার করা
 async def fetch_link(browser, data):
     name = data.get("name")
     url = data.get("url")
     logo = data.get("logo", "")
 
-    context = await browser.new_context()
+    # রিয়েল ব্রাউজারের মতো ইউজার-এজেন্ট সেট করা যাতে বট হিসেবে ব্লক না করে
+    context = await browser.new_context(
+        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    )
     page = await context.new_page()
 
-    await page.route("**/*.{png,jpg,jpeg,gif,css,svg}", lambda route: route.abort())
+    # অপ্রয়োজনীয় ইমেজ, ফন্ট এবং স্টাইলশিট ব্লক করে পেজ লোড সুপার ফাস্ট করা
+    await page.route("**/*.{png,jpg,jpeg,gif,css,svg,ico,woff,woff2}", lambda route: route.abort())
 
     m3u8_url = None
     referer_url = "https://dlstreams.st/"
 
     def handle_request(request):
         nonlocal m3u8_url, referer_url
-        if ".m3u8" in request.url:
-            m3u8_url = request.url
-            headers = request.headers
-            referer_url = headers.get("referer", "https://dlstreams.st/")
+        req_url = request.url
+        if ".m3u8" in req_url or "playlist" in req_url:
+            # ডামি বা লো-কোয়ালিটি থাম্বনেইল এড়িয়ে আসল স্ট্রিম লিংক ধরার ফিল্টার
+            if "mono.m3u8" in req_url or "tracks" in req_url or "index" in req_url or "live" in req_url:
+                m3u8_url = req_url
+                headers = request.headers
+                referer_url = headers.get("referer", "https://dlstreams.st/")
 
     page.on("request", handle_request)
 
     try:
-        await page.goto(url, timeout=25000)
-        for _ in range(8):
+        await page.goto(url, timeout=20000)
+        
+        # লিংক পাওয়ার জন্য স্মার্ট ওয়েটিং (সর্বোচ্চ ৬ সেকেন্ড)
+        for _ in range(6):
             if m3u8_url:
                 break
             await asyncio.sleep(1)
+            
     except Exception as e:
         pass
 
@@ -102,13 +114,13 @@ async def main():
             await browser.close()
             return
 
-        print("[2/3] নিরাপদ গতিতে .m3u8 লিংক ক্যাপচার করা হচ্ছে...")
+        print("[2/3] মাল্টি-ট্যাব এবং ব্যাচ পদ্ধতিতে দ্রুত .m3u8 লিংক ক্যাপচার করা হচ্ছে...")
         
         results = []
-        # একসাথে শত শত টাস্ক না চালিয়ে ৫টি করে ব্যাচে প্রসেস করব যাতে টাইমআউট বা ক্যানসেল না হয়
         channel_items = list(channels.values())
-        batch_size = 5
         
+        # একসঙ্গে ১০টি করে ট্যাব চালিয়ে গতি বহুগুণ বাড়িয়ে দেওয়া হলো
+        batch_size = 10
         for i in range(0, len(channel_items), batch_size):
             batch = channel_items[i:i + batch_size]
             tasks = [fetch_link(browser, data) for data in batch]
