@@ -53,12 +53,10 @@ def generate_m3u_playlist():
         name = item["name"]
         url = item["url"]
         
-        # টাইটেলের সাথে >Capture< লেখাটি যুক্ত করা হয়েছে
-        display_name = f"{name} >Capture<"
-        
-        m3u_content += f'#EXTINF:-1 tvg-chno="" tvg-name="{display_name}" group-title="DaddyLive",{display_name}\n'
+        m3u_content += f'#EXTINF:-1 tvg-chno="" tvg-name="{name}" group-title="DaddyLive",{name}\n'
         m3u_content += f'#EXTVLCOPT:http-referrer=https://dlstreams.st/\n'
-        m3u_content += f'{url}\n'
+        # লিংকের ঠিক আগে >Capture< লেখাটি যুক্ত করা হয়েছে
+        m3u_content += f'>Capture<{url}\n'
 
     # playlist.m3u ফাইলে সেভ করা
     file_name = "playlist.m3u"
