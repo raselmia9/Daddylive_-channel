@@ -1,15 +1,36 @@
-playlist_name: DaddyLive Test Playlist (Watch Links)
-total_channels: 5
-channels:
-  - title: CANAL+ FAMILY POLAND
-    url: https://dlstreams.st/stream/watch.php?id=567
-    user_agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
-    http_refer_url: https://dlstreams.st/
-  - title: CANAL+ SERIALE POLAND
-    url: https://dlstreams.st/stream/watch.php?id=570
-    user_agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
-    http_refer_url: https://dlstreams.st/
-  - title: CANAL+ SPORT 1 AFRIQUE
-    url: https://dlstreams.st/stream/watch.php?id=486
-    user_agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
-    http_refer_url: https://dlstreams.st/
+name: Run Scraper
+
+on:
+  schedule:
+    - cron: '0 */6 * * *' # প্রতি ৬ ঘণ্টা পর পর রান হবে
+  workflow_dispatch: # ম্যানুয়ালি রান করার অপশন
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install requests beautifulsoup4 pyyaml playwright
+        playwright install chromium
+
+    - name: Run main script
+      run: python main.py
+
+    - name: Commit and push generated playlist
+      run: |
+        git config --global user.name "GitHub Action"
+        git config --global user.email "action@github.com"
+        git add playlist.yaml
+        git commit -m "Auto-update playlist.yaml" || exit 0
+        git push
