@@ -1,0 +1,15 @@
+playlist_name: DaddyLive Test Playlist (Watch Links)
+total_channels: 5
+channels:
+  - title: CANAL+ FAMILY POLAND
+    url: https://dlstreams.st/stream/watch.php?id=567
+    user_agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
+    http_refer_url: https://dlstreams.st/
+  - title: CANAL+ SERIALE POLAND
+    url: https://dlstreams.st/stream/watch.php?id=570
+    user_agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
+    http_refer_url: https://dlstreams.st/
+  - title: CANAL+ SPORT 1 AFRIQUE
+    url: https://dlstreams.st/stream/watch.php?id=486
+    user_agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
+    http_refer_url: https://dlstreams.st/
