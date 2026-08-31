@@ -54,7 +54,6 @@ def generate_m3u_playlist():
         url = item["url"]
         
         m3u_content += f'#EXTINF:-1 tvg-chno="" tvg-name="{name}" group-title="DaddyLive",{name}\n'
-        m3u_content += f'#EXTVLCOPT:http-referrer=https://dlstreams.st/\n'
         # লিংকের ঠিক আগে >Capture< লেখাটি যুক্ত করা হয়েছে
         m3u_content += f'>Capture<{url}\n'
 
