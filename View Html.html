@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IPTV Player</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { background-color: #0d1117; color: #fff; font-family: sans-serif; margin: 0; padding: 5px; width: 100%; overflow-x: hidden; }
+        
+        .category-bar { display: flex; overflow-x: auto; gap: 8px; padding: 10px 5px; white-space: nowrap; margin-bottom: 10px; }
+        .category-bar::-webkit-scrollbar { display: none; }
+        .cat-btn { background: #374151; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: bold; flex-shrink: 0; }
+        .cat-btn:hover { background: #58a6ff; }
+
+        .container { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; width: 100%; }
+        
+        .card { background: #161b22; border: 1px solid #374151; padding: 5px; border-radius: 8px; text-align: center; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100px; overflow: hidden; }
+        
+        .card img { width: 60px; height: 60px; border-radius: 50%; object-fit: cover; background-color: #2b313b; }
+        
+        .name { font-size: 8px; margin-top: 4px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; width: 90%; }
+        
+        .loader-wrapper { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1000; }
+        .spinner { width: 40px; height: 40px; border: 4px solid #374151; border-top: 4px solid #58a6ff; border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div id="status" class="loader-wrapper"><div class="spinner"></div></div>
+    <div id="cat-container" class="category-bar"></div>
+    <div class="container" id="main"></div>
+
+    <script>
+        const targetUrl = "https://raw.githubusercontent.com/raselmia9/Daddylive_-channel/refs/heads/main/DaddyLive_Clean_Playlist.m3u";
+        const defaultLogo = "https://cdn-icons-png.flaticon.com/512/2305/2305896.png"; 
+
+        let allChannels = [];
+        let categories = new Set();
+
+        async function loadChannels() {
+            try {
+                const response = await fetch(targetUrl);
+                const data = await response.text();
+                if (data.trim().startsWith('[')) {
+                    parseJSON(JSON.parse(data));
+                } else {
+                    parseM3U(data);
+                }
+            } catch (error) { 
+                document.getElementById('status').innerHTML = "<div style='color:red'>নেটওয়ার্ক এরর!</div>"; 
+            }
+        }
+
+        function parseJSON(data) {
+            document.getElementById('status').style.display = 'none';
+            data.forEach(item => {
+                allChannels.push(item);
+                categories.add(item.group || "Others");
+            });
+            renderCategories();
+            renderChannels(allChannels);
+        }
+
+        function parseM3U(data) {
+            const lines = data.split('\n');
+            document.getElementById('status').style.display = 'none';
+            let currentGroup = "Others";
+            lines.forEach((line, i) => {
+                if (line.includes("#EXTGRP:")) currentGroup = line.split(':')[1].trim();
+                else if (line.includes('group-title="')) currentGroup = line.split('group-title="')[1].split('"')[0];
+                if (line.includes("#EXTINF")) {
+                    const name = line.split(',').pop();
+                    const url = lines[i + 1];
+                    const logo = line.match(/tvg-logo="(.*?)"/)?.[1] || '';
+                    allChannels.push({ name, url, logo, group: currentGroup });
+                    categories.add(currentGroup);
+                }
+            });
+            renderCategories();
+            renderChannels(allChannels);
+        }
+
+        function renderCategories() {
+            const bar = document.getElementById('cat-container');
+            bar.innerHTML = `<button class="cat-btn" onclick="filterByCategory('All')">All</button>`;
+            Array.from(categories).sort().forEach(cat => {
+                bar.innerHTML += `<button class="cat-btn" onclick="filterByCategory('${cat}')">${cat}</button>`;
+            });
+        }
+
+        function renderChannels(channels) {
+            const main = document.getElementById('main');
+            main.innerHTML = ''; 
+            channels.forEach(ch => {
+                const div = document.createElement('div');
+                div.className = 'card';
+                
+                // প্রথমে ডিফল্ট লোগো দিয়ে ইমেজ ট্যাগ তৈরি করছি
+                div.innerHTML = `<img src="${defaultLogo}" id="img_${ch.name.replace(/\s+/g, '')}">
+                                 <div class="name">${ch.name}</div>`;
+                
+                // লজিক: ইমেজ লোড করার চেষ্টা করা হচ্ছে ব্যাকগ্রাউন্ডে
+                if (ch.logo && ch.logo.trim() !== "") {
+                    const imgObj = new Image();
+                    imgObj.src = ch.logo;
+                    imgObj.onload = () => {
+                        const imgEl = document.getElementById("img_" + ch.name.replace(/\s+/g, ''));
+                        if (imgEl) imgEl.src = ch.logo;
+                    };
+                    // যদি এরর হয়, তবে ডিফল্ট লোগোই থেকে যাবে (যা src এ অলরেডি আছে)
+                }
+
+                div.onclick = () => window.AppInventor ? window.AppInventor.setWebViewString(ch.url) : alert(ch.url);
+                main.appendChild(div);
+            });
+        }
+
+        function filterByCategory(cat) {
+            renderChannels(cat === 'All' ? allChannels : allChannels.filter(ch => ch.group === cat));
+        }
+
+        function filterMatches(searchText) {
+            const filtered = allChannels.filter(ch => 
+                ch.name.toLowerCase().includes(searchText.toLowerCase())
+            );
+            renderChannels(filtered);
+        }
+
+        loadChannels();
+    </script>
+</body>
+</html>
