@@ -1,14 +1,4 @@
 #EXTM3U
-#EXTINF:-1 tvg-chno="" tvg-name="24/7 Channels" tvg-logo="" group-title="DaddyLive",24/7 Channels
-https://dlstreams.st/24-7-channels.php>Capture<
-#EXTINF:-1 tvg-chno="" tvg-name="Schedule" tvg-logo="" group-title="DaddyLive",Schedule
-https://dlstreams.st/>Capture<
-#EXTINF:-1 tvg-chno="" tvg-name="Webmasters" tvg-logo="" group-title="DaddyLive",Webmasters
-https://dlstreams.st/webmasters.php>Capture<
-#EXTINF:-1 tvg-chno="" tvg-name="Contact Us" tvg-logo="" group-title="DaddyLive",Contact Us
-https://dlstreams.st/contact.php>Capture<
-#EXTINF:-1 tvg-chno="" tvg-name="24/7" tvg-logo="" group-title="DaddyLive",24/7
-https://dlstreams.st/24-7-channels.php>Capture<
 #EXTINF:-1 tvg-chno="" tvg-name="ABC USA" tvg-logo="" group-title="DaddyLive",ABC USA
 https://dlstreams.st/watch.php?id=51>Capture<
 #EXTINF:-1 tvg-chno="" tvg-name="AHC (American Heroes Channel)" tvg-logo="" group-title="DaddyLive",AHC (American Heroes Channel)
