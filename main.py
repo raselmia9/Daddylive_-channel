@@ -1,6 +1,7 @@
 import asyncio
 from playwright.async_api import async_playwright
 
+# টেস্ট করার জন্য সুনির্দিষ্ট সিঙ্গেল ওয়াচ পেজ লিংক
 TEST_URL = "https://dlstreams.st/watch.php?id=51"
 CHANNEL_NAME = "ABC USA"
 
@@ -20,13 +21,13 @@ async def test_single_link():
         
         page = await context.new_page()
 
-        # পাওয়াসব লিংকগুলো জমা রাখার জন্য একটি লিস্ট
+        # পাওয়া সব লিংকগুলো জমা রাখার জন্য লিস্ট
         captured_links = []
 
         def handle_request(request):
             req_url = request.url
-            # .m3u8 বা স্ট্রিম সম্পর্কিত যত লিংক পাওয়া যাবে সব ক্যাচ করা হবে
-            if ".m3u8" in req_url or "playlist" in req_url:
+            # .m3u8 বা স্ট্রিম সম্পর্কিত যত লিংক নেটওয়ার্কে আসবে সব ক্যাচ করা হবে
+            if ".m3u8" in req_url or "playlist" in req_url or "manifest" in req_url:
                 referer = request.headers.get("referer", "https://dlstreams.st/")
                 full_link = f"{req_url}|Referer={referer}"
                 if full_link not in captured_links:
@@ -37,21 +38,25 @@ async def test_single_link():
 
         print(f"টেস্ট করা হচ্ছে (Testing): {TEST_URL}")
         try:
+            # পেজ লোড করা
             await page.goto(TEST_URL, timeout=30000, wait_until="networkidle")
             
-            # লিংকগুলো আসার জন্য ৮ সেকেন্ড অপেক্ষা করা
-            for i in range(8):
+            # পেজে ৩০ সেকেন্ড অপেক্ষা করা এবং প্রতি সেকেন্ডে প্রোগ্রেস দেখানো
+            print("পেজ লোড হয়েছে। ৩০ সেকেন্ড অপেক্ষা করা হচ্ছে...")
+            for i in range(30):
                 await asyncio.sleep(1)
+                if (i + 1) % 5 == 0:
+                    print(f"অপেক্ষা করা হয়েছে: {i + 1} সেকেন্ড...")
                 
         except Exception as e:
             print(f"Error loading page: {e}")
 
         await browser.close()
 
+        # ফলাফল আউটপুট ও ফাইল তৈরি করা
         if captured_links:
-            print(f"\n[✔] মোট {len(captured_links)} টি লিংক পাওয়া গেছে!")
+            print(f"\n[✔] সফলভাবে মোট {len(captured_links)} টি লিংক পাওয়া গেছে!")
             
-            # সব লিংক দিয়ে playlist.m3u তৈরি করা
             playlist_content = "#EXTM3U\n"
             for idx, link in enumerate(captured_links, 1):
                 custom_name = f"{CHANNEL_NAME} [{idx}]"
@@ -63,7 +68,7 @@ async def test_single_link():
             
             print("[✔] সফলভাবে সব লিংক নিয়ে 'playlist.m3u' ফাইল তৈরি করা হয়েছে!")
         else:
-            print("\n[✘] কোনো লিংক পাওয়া যায়নি।")
+            print("\n[✘] ৩০ সেকেন্ডের মধ্যে কোনো লিংক পাওয়া যায়নি।")
 
 if __name__ == "__main__":
     asyncio.run(test_single_link())
