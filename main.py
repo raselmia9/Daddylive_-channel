@@ -50,7 +50,7 @@ async def generate_json_file(page):
         
     return channels_dict
 
-# ধাপ ২: সুপার ফাস্ট ও অপ্টিমাইজড পদ্ধতিতে .m3u8 লিংক ক্যাপচার করা
+# ধাপ ২: শুধুমাত্র index.m3u8 লিংক ক্যাপচার করার অপ্টিমাইজড ফাংশন
 async def fetch_link(browser, data):
     name = data.get("name")
     url = data.get("url")
@@ -61,7 +61,7 @@ async def fetch_link(browser, data):
     )
     page = await context.new_page()
 
-    # অপ্রয়োজনীয় এলিমেন্ট ব্লক করে পেজ লোড ফাস্ট করা
+    # অপ্রয়োজনীয় এলিমেন্ট ব্লক করা
     await page.route("**/*.{png,jpg,jpeg,gif,css,svg,ico,woff,woff2}", lambda route: route.abort())
 
     m3u8_url = None
@@ -70,26 +70,35 @@ async def fetch_link(browser, data):
     def handle_request(request):
         nonlocal m3u8_url, referer_url
         req_url = request.url
-        # index.m3u8 বা আসল স্ট্রিম প্যাটার্ন ট্র্যাক করা
-        if ".m3u8" in req_url or "playlist" in req_url:
-            if "index.m3u8" in req_url or "mono.m3u8" in req_url or "tracks" in req_url or "live" in req_url:
-                m3u8_url = req_url
-                headers = request.headers
-                referer_url = headers.get("referer", "https://dlstreams.st/")
+        # কঠোরভাবে শুধু index.m3u8 লিংক ফিল্টার করা
+        if "index.m3u8" in req_url:
+            m3u8_url = req_url
+            headers = request.headers
+            referer_url = headers.get("referer", "https://dlstreams.st/")
 
     page.on("request", handle_request)
 
-    try:
-        await page.goto(url, timeout=20000)
-        
-        # লিংক পাওয়ার জন্য স্মার্ট ওয়েটিং (সর্বোচ্চ ৫ সেকেন্ড)
-        for _ in range(5):
-            if m3u8_url:
+    max_retries = 2  # সর্বোচ্চ ২ বার রিলোড করার চেষ্টা করবে
+    success = False
+
+    for attempt in range(max_retries + 1):
+        try:
+            if attempt == 0:
+                await page.goto(url, timeout=15000)
+            else:
+                await page.reload(timeout=15000)
+
+            for _ in range(4):
+                if m3u8_url:
+                    success = True
+                    break
+                await asyncio.sleep(1)
+
+            if success:
                 break
-            await asyncio.sleep(1)
-            
-    except Exception as e:
-        pass
+
+        except Exception as e:
+            pass
 
     await context.close()
 
@@ -98,7 +107,7 @@ async def fetch_link(browser, data):
         print(f"Success: {name}")
         return name, logo, stream_link
     
-    print(f"Failed: {name}")
+    print(f"Failed (Discarded): {name}")
     return name, logo, None
 
 async def main():
@@ -114,12 +123,12 @@ async def main():
             await browser.close()
             return
 
-        print("[2/3] একসঙ্গে ২০টি ট্যাব চালিয়ে দ্রুত .m3u8 লিংক ক্যাপচার করা হচ্ছে...")
+        print("[2/3] শুধুমাত্র প্রথম ১০০টি চ্যানেল নিয়ে index.m3u8 লিংক ক্যাপচার করা হচ্ছে...")
         
         results = []
-        channel_items = list(channels.values())
+        channel_items = list(channels.values())[:100]  # কন্ডিশন: শুধুমাত্র প্রথম ১০০টি চ্যানেল
         
-        # একসঙ্গে ২০টি করে ট্যাব চালিয়ে গতি বহুগুণ বাড়িয়ে দেওয়া হলো
+        # একসঙ্গে ২০টি করে ট্যাব চালিয়ে দ্রুত টেস্ট করা
         batch_size = 20
         for i in range(0, len(channel_items), batch_size):
             batch = channel_items[i:i + batch_size]
@@ -137,15 +146,15 @@ async def main():
     for name, logo, stream_link in results:
         if stream_link:
             playlist_content += f'#EXTINF:-1 tvg-id="" tvg-name="{name}" tvg-logo="{logo}" group-title="DaddyLive",{name}\n'
-            playlist_content += f'#EXTVLCOPT:http-referrer={referer_url if "referer_url" in locals() else "https://dlstreams.st/"}\n'
-            # লিংকের ঠিক আগে >Capture< লেখাটি যুক্ত করা হয়েছে
-            playlist_content += f'>Capture<{stream_link}\n'
+            playlist_content += f'#EXTVLCOPT:http-referrer=https://dlstreams.st/\n'
+            # লিংকের আগের অতিরিক্ত লেখা বাদ দিয়ে সরাসরি ক্লিন লিংক বসানো হলো
+            playlist_content += f"{stream_link}\n"
             success_count += 1
 
     with open("playlist.m3u", "w", encoding="utf-8") as f:
         f.write(playlist_content)
     
-    print(f"[✔] কাজ শেষ! মোট {success_count} টি সচল স্ট্রিম নিয়ে প্লেলিস্ট তৈরি হয়েছে।")
+    print(f"[✔] কাজ শেষ! প্রথম ১০০টির মধ্যে মোট {success_count} টি সচল স্ট্রিম নিয়ে প্লেলিস্ট তৈরি হয়েছে।")
 
 if __name__ == "__main__":
     asyncio.run(main())
