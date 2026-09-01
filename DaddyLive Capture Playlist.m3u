@@ -1,19 +1,4 @@
 #EXTM3U
-#EXTINF:-1 tvg-chno="" tvg-name="24/7 Channels" group-title="DaddyLive",24/7 Channels
-#EXTVLCOPT:http-referrer=https://dlstreams.st/
->Capture<https://dlstreams.st/24-7-channels.php
-#EXTINF:-1 tvg-chno="" tvg-name="Schedule" group-title="DaddyLive",Schedule
-#EXTVLCOPT:http-referrer=https://dlstreams.st/
->Capture<https://dlstreams.st/
-#EXTINF:-1 tvg-chno="" tvg-name="Webmasters" group-title="DaddyLive",Webmasters
-#EXTVLCOPT:http-referrer=https://dlstreams.st/
->Capture<https://dlstreams.st/webmasters.php
-#EXTINF:-1 tvg-chno="" tvg-name="Contact Us" group-title="DaddyLive",Contact Us
-#EXTVLCOPT:http-referrer=https://dlstreams.st/
->Capture<https://dlstreams.st/contact.php
-#EXTINF:-1 tvg-chno="" tvg-name="24/7" group-title="DaddyLive",24/7
-#EXTVLCOPT:http-referrer=https://dlstreams.st/
->Capture<https://dlstreams.st/24-7-channels.php
 #EXTINF:-1 tvg-chno="" tvg-name="ABC USA" group-title="DaddyLive",ABC USA
 #EXTVLCOPT:http-referrer=https://dlstreams.st/
 >Capture<https://dlstreams.st/watch.php?id=51
